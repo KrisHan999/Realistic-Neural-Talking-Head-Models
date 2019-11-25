@@ -16,7 +16,7 @@ D = Discriminator(36237)
 optimizerG = optim.Adam(params = list(E.parameters()) + list(G.parameters()), lr=5e-5)
 optimizerD = optim.Adam(params = D.parameters(), lr=2e-4)
 
-path_to_chkpt = '../model_weights.tar'
+path_to_chkpt = 'model_weights.tar'
 cpu = torch.device("cpu")
 
 checkpoint = torch.load(path_to_chkpt, map_location=cpu)
@@ -31,12 +31,14 @@ lossesD = checkpoint['lossesD']
 num_vid = checkpoint['num_vid']
 i_batch_current = checkpoint['i_batch'] +1
 
-data1 = pkl.load(open("../data/id00017_01dfn2spqyE_00001.vid", 'rb'))
-data2 = pkl.load(open("../data/id00017_5MkXgwdrmJw_00002.vid", 'rb'))
+data1 = pkl.load(open("data/id00017_01dfn2spqyE_00001.vid", 'rb'))
+data2 = pkl.load(open("data/id00017_5MkXgwdrmJw_00002.vid", 'rb'))
 
 fig, ax = plt.subplots(1, 2, figsize = (10, 20))
 ax[0].imshow(data1[0]['frame'])
 ax[1].imshow(data2[0]['frame'])
+
+plt.show()
 
 # The data saved in .vid is in the order of [H, W, C]
 # while the model nee input of [C, W, H]

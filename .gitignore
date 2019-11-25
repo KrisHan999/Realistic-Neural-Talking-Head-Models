@@ -1,0 +1,5 @@
+.idea
+
+network/__pycache__
+
+model_weights.tar
