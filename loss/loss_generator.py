@@ -4,91 +4,53 @@ import imp
 import torchvision
 from torchvision.models import vgg19
 from network.model import Cropped_VGG19
+from network.vgg import *
+import torch.nn.functional as F
 
 
 class LossCnt(nn.Module):
     def __init__(self, VGGFace_body_path, VGGFace_weight_path, device):
         super(LossCnt, self).__init__()
-        
+
+        self.vgg19_layers = [1, 6, 11, 18, 25]
+        self.vggface_layers = [1, 6, 11, 20, 29]
+
         self.VGG19 = vgg19(pretrained=True)
         self.VGG19.eval()
         self.VGG19.to(device)
-        
-        
-        MainModel = imp.load_source('MainModel', VGGFace_body_path)
-        full_VGGFace = torch.load(VGGFace_weight_path, map_location = 'cpu')
-        cropped_VGGFace = Cropped_VGG19()
-        cropped_VGGFace.load_state_dict(full_VGGFace.state_dict(), strict = False)
-        self.VGGFace = cropped_VGGFace
+
+        self.VGGFace = vgg_face(pretrained=True)
         self.VGGFace.eval()
         self.VGGFace.to(device)
 
+
+        self.VGG19_Activations = VGG_Activations(self.VGG19, self.vgg19_layers)
+        self.VGGface_Activations = VGG_Activations(self.VGGFace, self.vggface_layers)
+
+
     def forward(self, x, x_hat, vgg19_weight=1e-2, vggface_weight=2e-3):
-        l1_loss = nn.L1Loss()
 
-        """Retrieve vggface feature maps"""
-        with torch.no_grad(): #no need for gradient compute
-            vgg_x_features = self.VGGFace(x) #returns a list of feature maps at desired layers
+        IMG_NET_MEAN = torch.Tensor([0.485, 0.456, 0.406]).reshape([1, 3, 1, 1]).to(x.device)
+        IMG_NET_STD = torch.Tensor([0.229, 0.224, 0.225]).reshape([1, 3, 1, 1]).to(x.device)
 
-        vgg_xhat_features = self.VGGFace(x_hat)
+        x = (x - IMG_NET_MEAN) / IMG_NET_STD
+        x_hat = (x_hat - IMG_NET_MEAN) / IMG_NET_STD
 
-        lossface = 0
-        for x_feat, xhat_feat in zip(vgg_x_features, vgg_xhat_features):
-            lossface += l1_loss(x_feat, xhat_feat)
+        vgg19_x_activations = self.VGG19_Activations(x)
+        vgg19_x_hat_activations = self.VGG19_Activations(x_hat)
 
+        vgg19_loss = 0
+        for i in range(len(self.vgg19_layers)):
+            vgg19_loss += F.l1_loss(vgg19_x_activations[i], vgg19_x_hat_activations[i])
 
-        """Retrieve vggface feature maps"""
-        #define hook
-        def vgg_x_hook(module, input, output):
-            output.detach_() #no gradient compute
-            vgg_x_features.append(output)
-        def vgg_xhat_hook(module, input, output):
-            vgg_xhat_features.append(output)
-            
-        vgg_x_features = []
-        vgg_xhat_features = []
+        vggface_x_activations = self.VGGface_Activations(x)
+        vggface_x_hat_activations = self.VGGface_Activations(x_hat)
 
-        vgg_x_handles = []
-        
-        conv_idx_list = [2,7,12,21,30] #idxes of conv layers in VGG19 cf.paper
-        conv_idx_iter = 0
-        
-        
-        #place hooks
-        for i,m in enumerate(self.VGG19.features.modules()):
-            if i == conv_idx_list[conv_idx_iter]:
-                if conv_idx_iter < len(conv_idx_list)-1:
-                    conv_idx_iter += 1
-                vgg_x_handles.append(m.register_forward_hook(vgg_x_hook))
+        vggface_loss = 0
+        for i in range(len(self.vggface_layers)):
+            vggface_loss += F.l1_loss(vggface_x_activations[i], vggface_x_hat_activations[i])
 
-        #run model for x
-        self.VGG19(x)
-
-        #retrieve features for x
-        for h in vgg_x_handles:
-            h.remove()
-
-        #retrieve features for x_hat
-        conv_idx_iter = 0
-        for i,m in enumerate(self.VGG19.modules()):
-            if i <= 30: #30 is last conv layer
-                if type(m) is not torch.nn.Sequential and type(m) is not torchvision.models.vgg.VGG:
-                #only pass through nn.module layers
-                    if i == conv_idx_list[conv_idx_iter]:
-                        if conv_idx_iter < len(conv_idx_list)-1:
-                            conv_idx_iter += 1
-                        x_hat = m(x_hat)
-                        vgg_xhat_features.append(x_hat)
-                        x_hat.detach_() #reset gradient from output of conv layer
-                    else:
-                        x_hat = m(x_hat)
-        
-        loss19 = 0
-        for x_feat, xhat_feat in zip(vgg_x_features, vgg_xhat_features):
-            loss19 += l1_loss(x_feat, xhat_feat)
-
-        loss = vgg19_weight * loss19 + vggface_weight * lossface
-
+        loss = vgg19_loss*vgg19_weight + vggface_loss*vggface_weight
         return loss
 
 

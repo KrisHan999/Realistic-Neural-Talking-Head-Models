@@ -38,8 +38,8 @@ class VidDataSet(Dataset):
         path = os.path.join(self.path_to_mp4, person_id, video_id, video)
         frame_mark = select_frames(path , self.K)
         frame_mark = generate_landmarks(frame_mark)
-        frame_mark = torch.from_numpy(np.array(frame_mark)).type(dtype = torch.float) #K,2,224,224,3
-        frame_mark = frame_mark.transpose(2,4).to(self.device) #K,2,3,224,224
+        frame_mark = torch.from_numpy(np.array(frame_mark)).type(dtype = torch.float)   #K,2,224,224,3
+        frame_mark = frame_mark.transpose(2,4).to(self.device)                          #K,2,3,224,224  : order W, H instead H, W
         
         g_idx = torch.randint(low = 0, high = self.K, size = (1,1))
         x = frame_mark[g_idx,0].squeeze()
